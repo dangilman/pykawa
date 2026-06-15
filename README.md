@@ -1,5 +1,9 @@
 # pykawa
 
+<p align="center">
+  <img src="pykawa_logo.png" width="400"/>
+</p>
+
 ![PyPI version](https://img.shields.io/pypi/v/pykawa.svg)
 
 Exact solutions for the phase shifts and scattering cross sections for Yukawa potentials. See the notebooks for example usage. 
