@@ -2,12 +2,12 @@ import numpy as np
 from scipy.interpolate import interp1d, RegularGridInterpolator
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from pykawa.utils import get_slope_at_vmatch, extrapolate_cross_section
+from pykawa.utils import get_slope_at_vmatch, extrapolate_cross_section, get_phases
 from pykawa.partial_wave_sums import (partial_wave_sum_momentum,
                                       partial_wave_sum_viscosity,
                                       partial_wave_sum_total,
                                       partial_wave_sum_angular)
-
+from importlib.resources import files
 
 class CrossSection(object):
     """
@@ -503,3 +503,56 @@ class CrossSectionInterpolator(object):
         :returns:                cross section in cm²/g, same shape as v
         """
         return self._evaluate_cross_section(v, amp_at_vref, log10alpha, log10_mass_ratio)
+
+def make_cross_section_interpolator(potential, cross_section_type='VISCOSITY',
+                                    v=None, v_power=4.0, v_ref=35):
+    """
+    Build a CrossSectionInterpolator from the precomputed phase shift data
+    for a given potential.
+
+    Parameters
+    ----------
+    potential : str
+        Either 'ATTRACTIVE_YUKAWA' or 'REPULSIVE_YUKAWA'.
+    cross_section_type : str, optional
+        One of 'VISCOSITY', 'MOMENTUM', or 'TOTAL'. Default is 'VISCOSITY'.
+    v : ndarray, optional
+        Velocity array in km/s at which to evaluate the cross section.
+        Defaults to np.logspace(-1, 4, 100).
+    v_power : float, optional
+        Power law index for high-velocity extrapolation. Default is 4.0.
+    v_ref: reference velocity at which to normalize cross section strengtht to "amp_at_vref"
+
+    Returns
+    -------
+    CrossSectionInterpolator
+    """
+    if v is None:
+        v = np.logspace(-1, 4, 100)
+
+    scale = 10 if potential == 'REPULSIVE_YUKAWA' else 100
+    data = np.load(files("pykawa.data").joinpath(f"{potential}_phases.npz"))
+    mphi_vals = data["mphi"]
+    alpha_vals = data["alpha"]
+
+    log10_mass_ratio_values = mphi_vals / scale
+    log10alpha_values = -alpha_vals / scale
+    n_alpha = len(log10alpha_values)
+    n_mr = len(log10_mass_ratio_values)
+    cross_section_table = np.empty((n_alpha, n_mr, len(v)))
+    v_grid_table = np.empty((n_alpha, n_mr, 25))
+
+    for i, log10alpha in enumerate(log10alpha_values):
+        for j, log10_mass_ratio in enumerate(log10_mass_ratio_values):
+            v_grid, phases = get_phases(log10_mass_ratio, log10alpha, potential)
+            cross = CrossSection.from_phase_shifts(
+                v_grid, phases,  # v_grid is already log10(v)
+                cross_section_type, log10alpha, log10_mass_ratio,
+                v_power=v_power
+            )
+            cross_section_table[i, j, :] = cross(v, None)
+            v_grid_table[i, j, :] = v_grid
+    cross_section_interpolator = CrossSectionInterpolator(v, log10alpha_values, log10_mass_ratio_values,
+                                                          cross_section_table,
+                                                          v_ref=v_ref)
+    return cross_section_interpolator, cross_section_table, log10_mass_ratio_values, log10alpha_values, v_grid_table

@@ -118,4 +118,3 @@ def get_phases(log10_mass_ratio, log10_alpha, potential='REPULSIVE_YUKAWA'):
         )
 
     return data["v"][i, j], data["phases"][i, j]
-
