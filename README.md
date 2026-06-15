@@ -17,5 +17,3 @@ Mathematica scripts used to compute the cross sections can be found in the mathe
 pykawa was created in 2026 by Daniel Gilman.
 
 Built with [Cookiecutter](https://github.com/cookiecutter/cookiecutter) and the [audreyfeldroy/cookiecutter-pypackage](https://github.com/audreyfeldroy/cookiecutter-pypackage) project template.
-# pykawa
-# pykawa
