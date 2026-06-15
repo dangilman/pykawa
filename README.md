@@ -1,7 +1,7 @@
 # pykawa
 
 <p align="center">
-  <img src="pykawa_logo.png" width="800"/>
+  <img src="pykawa_logo.png" width="600"/>
 </p>
 
 ![PyPI version](https://img.shields.io/pypi/v/pykawa.svg)
