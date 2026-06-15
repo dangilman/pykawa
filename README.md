@@ -2,7 +2,7 @@
 
 ![PyPI version](https://img.shields.io/pypi/v/pykawa.svg)
 
-Exact solutioins for the phase shifts the scattering cross section for a Yukawa potential.
+Exact solutions for the phase shifts and scattering cross sections for Yukawa potentials.
 
 * [GitHub](https://github.com/dangilman/pykawa/) | [PyPI](https://pypi.org/project/pykawa/) | [Documentation](https://dangilman.github.io/pykawa/)
 * Created by [Daniel Gilman](https://audrey.feldroy.com/) | GitHub [@dangilman](https://github.com/dangilman) | PyPI [@gilmanda](https://pypi.org/user/gilmanda/)
