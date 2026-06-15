@@ -2,54 +2,15 @@
 
 ![PyPI version](https://img.shields.io/pypi/v/pykawa.svg)
 
-Exact solutions for the phase shifts and scattering cross sections for Yukawa potentials.
-
-* [GitHub](https://github.com/dangilman/pykawa/) | [PyPI](https://pypi.org/project/pykawa/) | [Documentation](https://dangilman.github.io/pykawa/)
-* Created by [Daniel Gilman](https://audrey.feldroy.com/) | GitHub [@dangilman](https://github.com/dangilman) | PyPI [@gilmanda](https://pypi.org/user/gilmanda/)
-* MIT License
+Exact solutions for the phase shifts and scattering cross sections for Yukawa potentials. See the notebooks for example usage. 
 
 ## Features
 
-* TODO
+- Load precomputed solutions for the scattering cross section, including the angle-dependent, total, momentum, and viscosity cross sections, for Yukawa potentials in the Born and semi-classical regime. Solutions include both repulsive and attractive (resonant) cross sections
+- Use interpolators to obtain solutions across a range of parameter space
+- Compute thermally averaged cross sections relevant for structure formation
 
-## Documentation
-
-Documentation is built with [Zensical](https://zensical.org/) and deployed to GitHub Pages.
-
-* **Live site:** https://dangilman.github.io/pykawa/
-* **Preview locally:** `just docs-serve` (serves at http://localhost:8000)
-* **Build:** `just docs-build`
-
-API documentation is auto-generated from docstrings using [mkdocstrings](https://mkdocstrings.github.io/).
-
-Docs deploy automatically on push to `main` via GitHub Actions. To enable this, go to your repo's Settings > Pages and set the source to **GitHub Actions**.
-
-## Development
-
-To set up for local development:
-
-```bash
-# Clone your fork
-git clone git@github.com:your_username/pykawa.git
-cd pykawa
-
-# Install in editable mode with live updates
-uv tool install --editable .
-```
-
-This installs the CLI globally but with live updates - any changes you make to the source code are immediately available when you run `pykawa`.
-
-Run tests:
-
-```bash
-uv run pytest
-```
-
-Run quality checks (format, lint, type check, test):
-
-```bash
-just qa
-```
+Mathematica scripts used to compute the cross sections can be found in the mathematica_scripts directory 
 
 ## Author
 
