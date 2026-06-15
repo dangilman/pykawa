@@ -1,5 +1,6 @@
 from scipy.integrate import cumulative_trapezoid
 import numpy as np
+from importlib.resources import files
 
 
 def extrapolate_cross_section(v, sigma_v0, slope_at_v0, slope_of_slope, slope_end=-4.0):
@@ -50,3 +51,71 @@ def get_slope_at_vmatch(v, sigma_v):
     """
     dlogsigma_dlogv = np.gradient(np.log(sigma_v), np.log(v))
     return dlogsigma_dlogv[-1]
+
+_cache = {}
+def get_phases(log10_mass_ratio, log10_alpha, potential='REPULSIVE_YUKAWA'):
+    """
+    Return the velocity grid and phase shifts for a given parameter combination.
+
+    The precomputed grids cover the following ranges:
+
+        REPULSIVE_YUKAWA:
+            log10_mass_ratio :  2.8 –  5.2, step 0.2  (13 values)
+            log10_alpha      : -2.0 – -4.4, step -0.3  (9 values)
+
+        ATTRACTIVE_YUKAWA:
+            log10_mass_ratio :  3.5 –  4.7, step 0.03  (41 values)
+            log10_alpha      : -2.6 – -4.6, step -0.05 (41 values)
+
+    Parameters
+    ----------
+    log10_mass_ratio : float
+        log10(m_chi / m_phi). Must match a value in the precomputed grid.
+    log10_alpha : float
+        log10(coupling), expected to be negative. Must match a value in
+        the precomputed grid.
+    potential : str, optional
+        Either 'ATTRACTIVE_YUKAWA' or 'REPULSIVE_YUKAWA'.
+        Default is 'REPULSIVE_YUKAWA'.
+
+    Returns
+    -------
+    v : ndarray, shape (N_v,)
+        Velocity grid. The velocity grid differs for each parameter combination.
+    phases : ndarray, shape (N_v, N_ell)
+        Phase shifts delta_ell(v), with ell running from 0 to N_ell - 1.
+        Computed to l_max = 300. Columns beyond the converged ell are zero.
+
+    Raises
+    ------
+    ValueError
+        If log10_mass_ratio or log10_alpha is not in the precomputed grid.
+    """
+    scale = 10 if potential == 'REPULSIVE_YUKAWA' else 100
+    mphi_key  = int(round(log10_mass_ratio * scale))
+    alpha_key = int(round(-log10_alpha * scale))  # stored as positive integers
+
+    if potential not in _cache:
+        path = files("pykawa.data").joinpath(f"{potential}_phases.npz")
+        _cache[potential] = np.load(path)
+
+    data = _cache[potential]
+    mphi_vals  = data["mphi"]
+    alpha_vals = data["alpha"]
+
+    i = np.searchsorted(mphi_vals, mphi_key)
+    if i >= len(mphi_vals) or mphi_vals[i] != mphi_key:
+        raise ValueError(
+            f"log10_mass_ratio={log10_mass_ratio} not in precomputed grid. "
+            f"Available: {(mphi_vals / scale).tolist()}"
+        )
+
+    j = np.searchsorted(alpha_vals, alpha_key)
+    if j >= len(alpha_vals) or alpha_vals[j] != alpha_key:
+        raise ValueError(
+            f"log10_alpha={log10_alpha} not in precomputed grid. "
+            f"Available: {(-alpha_vals / scale).tolist()}"
+        )
+
+    return data["v"][i, j], data["phases"][i, j]
+

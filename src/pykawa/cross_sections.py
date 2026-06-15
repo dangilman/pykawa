@@ -156,7 +156,7 @@ class CrossSection(object):
             self._scattering_angle_cdfs = cdfs  # (n_v, n_theta)
         return self._scattering_angle_cdfs, self._scattering_angle_theta_grid
 
-    def sample_scattering_angle(self, v, n_samples=1):
+    def sample_scattering_angle(self, v, n_samples=1, n_theta=1000):
         """
         Sample scattering angles θ from the distribution dσ/dΩ sinθ at a given velocity,
         using inverse CDF sampling on precomputed CDFs. The CDF at the requested velocity
@@ -165,9 +165,12 @@ class CrossSection(object):
 
         :param v:         velocity in km/s (scalar); must be within the range of self.v
         :param n_samples: number of angles to sample
+        :param n_theta:   the resolution in angle on which to interpolate dσ/dΩ from 0 to pi
         :returns:         array of sampled scattering angles in radians, shape (n_samples,)
         """
-        scattering_angle_cdfs, scattering_angle_theta_grid = self.setup_scattering_angle_sampler()
+        scattering_angle_cdfs, scattering_angle_theta_grid = self.setup_scattering_angle_sampler(
+            n_theta
+        )
         log10v_data = np.log10(self.v)
         log10v_query = np.log10(v)
         idx = np.searchsorted(log10v_data, log10v_query)
@@ -191,7 +194,7 @@ class CrossSection(object):
         xnorm = np.log(v_ref)
         amp_at_vref_1 = np.exp(self.interp(xnorm))
         m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
-        m_phi = m_chi / 10 ** self.log10_mass_ratio
+        m_phi = m_chi * 10 ** self.log10_mass_ratio
         alpha_chi = 10 ** self.log10alpha
         params = {'m_chi': m_chi,       # GeV
                   'm_phi': m_phi * 1000,  # MeV
@@ -295,6 +298,13 @@ class CrossSectionInterpolator(object):
                                               np.log(cross_section_table),
                                               method=interp_method)
         self._thermal_average_interpolation_class = thermal_average_interpolation_class
+
+    @property
+    def v_ref(self):
+        """
+        Reference velocity in km/s
+        """
+        return self._vref
 
     @classmethod
     def from_file(cls, base_path, v, log10alpha_values, log10_mass_ratio_values, v_power=4.0,
