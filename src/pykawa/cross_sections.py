@@ -194,10 +194,10 @@ class CrossSection(object):
         xnorm = np.log(v_ref)
         amp_at_vref_1 = np.exp(self.interp(xnorm))
         m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
-        m_phi = m_chi * 10 ** self.log10_mass_ratio
+        m_phi = m_chi / 10 ** self.log10_mass_ratio
         alpha_chi = 10 ** self.log10alpha
         params = {'m_chi': m_chi,       # GeV
-                  'm_phi': m_phi * 1000,  # MeV
+                  'm_phi': m_phi,       # GeV
                   'alpha_chi': alpha_chi}
         return params
 
