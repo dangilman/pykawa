@@ -182,6 +182,48 @@ class CrossSection(object):
         u = np.random.uniform(0, 1, n_samples)
         return np.interp(u, cdf, self._scattering_angle_theta_grid)
 
+    def convert_to_SIDM_params(self, amp_at_vref, v_ref=35):
+        """
+        Compute the m_chi, m_phi values corresponding to a set of alpha_chi, m_chi / m_phi, amp_at_vref values
+        return: m_chi and m_phi in Gev
+        """
+        m_chi = self.compute_mchi(amp_at_vref, v_ref)
+        m_phi = m_chi / 10 ** self.log10_mass_ratio
+        return m_chi, m_phi
+
+    def compute_mchi(self, amp_at_vref, v_ref=35):
+        """
+        Compute the DM particle mass m_chi for a given alpha, m_chi / m_phi, and amp_at_vref combination
+        return m_chi in GeV
+        """
+        xnorm = np.log(v_ref)
+        amp_at_vref_1 = np.exp(self.interp(xnorm))
+        m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
+        return m_chi
+
+    def relic_density_log10_dsphr(self, v_ref=35):
+        """
+        Compute the value of log10(sigma/m_chi) at v_ref [cm^2/g] that satisfies the
+        thermal relic density constraint alpha_chi ~ 0.1 * (m_chi / TeV), given
+        log10alpha and log10_mass_ratio.
+
+        :param v_ref:             reference velocity in km/s (default 35)
+        :returns:                 log10(amp_at_vref) satisfying the relic constraint,
+                                  same shape as log10alpha
+        """
+        log10alpha = np.atleast_1d(self.log10alpha)
+        log10_mass_ratio = np.atleast_1d(self.log10_mass_ratio)
+
+        log10_amp = np.empty(len(log10alpha))
+        for i, (la, lmr) in enumerate(zip(log10alpha, log10_mass_ratio)):
+            xnorm = (la, lmr, np.log(v_ref))
+            amp_at_vref_1 = np.exp(self.interp(xnorm))
+            # relic: alpha_chi = 0.1*(m_chi/TeV) => m_chi [GeV] = 10^(log10alpha + 4)
+            # sigma/m ~ m_chi^{-3} => amp_at_vref = amp_at_vref_1 * m_chi^{-3}
+            log10_amp[i] = np.log10(amp_at_vref_1) - 3 * (la + 4)
+
+        return float(log10_amp[0]) if log10_amp.size == 1 else log10_amp
+
     def particle_physics_params(self, amp_at_vref, v_ref=35):
         """
         Infer the particle physics parameters (m_χ, m_φ, α_χ) that produce a cross section
@@ -191,10 +233,7 @@ class CrossSection(object):
         :param v_ref:       reference velocity in km/s (default 35)
         :returns:           dict with keys 'm_chi' (GeV), 'm_phi' (MeV), 'alpha_chi'
         """
-        xnorm = np.log(v_ref)
-        amp_at_vref_1 = np.exp(self.interp(xnorm))
-        m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
-        m_phi = m_chi / 10 ** self.log10_mass_ratio
+        m_chi, m_phi = self.convert_to_SIDM_params(amp_at_vref, v_ref)
         alpha_chi = 10 ** self.log10alpha
         params = {'m_chi': m_chi,       # GeV
                   'm_phi': m_phi,       # GeV
@@ -442,6 +481,54 @@ class CrossSectionInterpolator(object):
         kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
         return _v, kernel * _sigmav
 
+    def relic_density_log10_dsphr(self, log10alpha, log10_mass_ratio, v_ref=35):
+        """
+        Compute the value of log10(sigma/m_chi) at v_ref [cm^2/g] that satisfies the
+        thermal relic density constraint alpha_chi ~ 0.1 * (m_chi / TeV), given
+        log10alpha and log10_mass_ratio.
+
+        The cross section scales as sigma/m ~ m_chi^-3 in pykawa's normalization, so
+        fixing (log10alpha, log10_mass_ratio) and requiring the relic condition uniquely
+        determines amp_at_vref.
+
+        :param log10alpha:        log10 of coupling constant alpha_chi, scalar or array
+        :param log10_mass_ratio:  log10 of m_chi / m_phi, scalar or array
+        :param v_ref:             reference velocity in km/s (default 35)
+        :returns:                 log10(amp_at_vref) satisfying the relic constraint,
+                                  same shape as log10alpha
+        """
+        log10alpha = np.atleast_1d(log10alpha)
+        log10_mass_ratio = np.atleast_1d(log10_mass_ratio)
+
+        log10_amp = np.empty(len(log10alpha))
+        for i, (la, lmr) in enumerate(zip(log10alpha, log10_mass_ratio)):
+            xnorm = (la, lmr, np.log(v_ref))
+            amp_at_vref_1 = np.exp(self.interp(xnorm))
+            # relic: alpha_chi = 0.1*(m_chi/TeV) => m_chi [GeV] = 10^(log10alpha + 4)
+            # sigma/m ~ m_chi^{-3} => amp_at_vref = amp_at_vref_1 * m_chi^{-3}
+            log10_amp[i] = np.log10(amp_at_vref_1) - 3 * (la + 4)
+
+        return float(log10_amp[0]) if log10_amp.size == 1 else log10_amp
+
+    def convert_to_SIDM_params(self, log10alpha, log10_mass_ratio, amp_at_vref, v_ref=35):
+        """
+        Compute the m_chi, m_phi values corresponding to a set of alpha_chi, m_chi / m_phi, amp_at_vref values
+        return: m_chi and m_phi in Gev
+        """
+        m_chi = self.compute_mchi(log10alpha, log10_mass_ratio, amp_at_vref, v_ref)
+        m_phi = m_chi / 10 ** log10_mass_ratio
+        return m_chi, m_phi
+
+    def compute_mchi(self, log10alpha, log10_mass_ratio, amp_at_vref, v_ref=35):
+        """
+        Compute the DM particle mass m_chi for a given alpha, m_chi / m_phi, and amp_at_vref combination
+        return m_chi in GeV
+        """
+        xnorm = (log10alpha, log10_mass_ratio, np.log(v_ref))
+        amp_at_vref_1 = np.exp(self.interp(xnorm))
+        m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
+        return m_chi
+
     def particle_physics_params(self, log10alpha, log10_mass_ratio, amp_at_vref, v_ref=35):
         """
         Infer the particle physics parameters (m_χ, m_φ, α_χ) that produce a cross section
@@ -451,15 +538,12 @@ class CrossSectionInterpolator(object):
         :param log10_mass_ratio: log10 of the mass ratio m_χ / m_φ
         :param amp_at_vref:      desired cross section in cm²/g at v_ref
         :param v_ref:            reference velocity in km/s (default 35)
-        :returns:                dict with keys 'm_chi' (GeV), 'm_phi' (MeV), 'alpha_chi'
+        :returns:                dict with keys 'm_chi' (GeV), 'm_phi' (GeV), 'alpha_chi'
         """
-        xnorm = (log10alpha, log10_mass_ratio, np.log(v_ref))
-        amp_at_vref_1 = np.exp(self.interp(xnorm))
-        m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
-        m_phi = m_chi / 10 ** log10_mass_ratio
+        m_chi, m_phi = self.convert_to_SIDM_params(log10alpha, log10_mass_ratio, amp_at_vref, v_ref)
         alpha_chi = 10 ** log10alpha
         params = {'m_chi': m_chi,
-                  'm_phi': m_phi * 1000,
+                  'm_phi': m_phi,
                   'alpha_chi': alpha_chi}
         return params
 
@@ -534,7 +618,7 @@ def make_cross_section_interpolator(potential, cross_section_type='VISCOSITY',
     data = np.load(files("pykawa.data").joinpath(f"{potential}_phases.npz"))
     mphi_vals = data["mphi"]
     alpha_vals = data["alpha"]
-
+    lconv_table = data["lconv"]
     log10_mass_ratio_values = mphi_vals / scale
     log10alpha_values = -alpha_vals / scale
     n_alpha = len(log10alpha_values)
@@ -546,7 +630,7 @@ def make_cross_section_interpolator(potential, cross_section_type='VISCOSITY',
         for j, log10_mass_ratio in enumerate(log10_mass_ratio_values):
             v_grid, phases = get_phases(log10_mass_ratio, log10alpha, potential)
             cross = CrossSection.from_phase_shifts(
-                v_grid, phases,  # v_grid is already log10(v)
+                v_grid, phases,
                 cross_section_type, log10alpha, log10_mass_ratio,
                 v_power=v_power
             )
