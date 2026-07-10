@@ -1,5 +1,5 @@
 # pykawa
-
+[![CI](https://github.com/dangilman/pykawa/actions/workflows/ci.yml/badge.svg)](https://github.com/dangilman/pykawa/actions/workflows/ci.yml)
 <p align="center">
   <img src="pykawa_logo.png" width="600"/>
 </p>
