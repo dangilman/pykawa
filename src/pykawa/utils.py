@@ -84,7 +84,7 @@ def get_phases(log10_mass_ratio, log10_alpha, potential='REPULSIVE_YUKAWA'):
         Velocity grid. The velocity grid differs for each parameter combination.
     phases : ndarray, shape (N_v, N_ell)
         Phase shifts delta_ell(v), with ell running from 0 to N_ell - 1.
-        Computed to l_max = 300. Columns beyond the converged ell are zero.
+        Computed to l_max = 350. Columns beyond the converged ell are zero.
 
     Raises
     ------
@@ -117,4 +117,4 @@ def get_phases(log10_mass_ratio, log10_alpha, potential='REPULSIVE_YUKAWA'):
             f"Available: {(-alpha_vals / scale).tolist()}"
         )
 
-    return data["v"][i, j], data["phases"][i, j]
+    return data["v"][i, j].astype(np.float64), data["phases"][i, j].astype(np.float64)
