@@ -5,39 +5,38 @@ from importlib.resources import files
 
 def extrapolate_cross_section(v, sigma_v0, slope_at_v0, slope_of_slope, slope_end=-4.0):
     """
-    Extrapolate σ(v) beyond the tabulated velocity range by integrating a power law
-    whose logarithmic slope transitions linearly from slope_at_v0 toward slope_end.
+    Extrapolate sigma(v) beyond the tabulated range by continuing the log-slope
+    with the curvature it exhibits at v[0], until it reaches slope_end:
 
-    The logarithmic slope d(log σ)/d(log v) is modelled as:
         exponent(v) = max(slope_at_v0 + slope_of_slope * log(v/v0), slope_end)
 
-    and σ(v) is recovered by exponentiating the cumulative integral:
-        log σ(v) = log σ(v0) + ∫_{v0}^{v} exponent(v') d(log v')
-
-    This allows a smooth transition from the slope at the last tabulated point to
-    the asymptotic high-velocity power law σ ∝ v^slope_end.
-
-    :param v:              velocity array for the extrapolation region, shape (n,)
-                           with v[0] equal to the last tabulated velocity
-    :param sigma_v0:       cross section at v[0] in cm²/g (the anchor point)
-    :param slope_at_v0:    initial logarithmic slope d(log σ)/d(log v) at v[0],
-                           typically obtained from get_slope_at_vmatch()
-    :param slope_of_slope: rate at which the slope changes with log(v/v0);
-                           a negative value causes the slope to steepen with velocity
-    :param slope_end:      asymptotic logarithmic slope at high velocity (default -4),
-                           corresponding to σ ∝ v^{-4} in the geometric regime
-    :returns:              extrapolated cross section array in cm²/g, shape (n,)
+    :param v:              extrapolation velocities, shape (n,); v[0] = last tabulated v
+    :param sigma_v0:       cross section at v[0] in cm^2/g
+    :param slope_at_v0:    log-slope at v[0] (from get_slope_at_vmatch)
+    :param slope_of_slope: d^2(log sigma)/d(log v)^2 at v[0]
+                           (from get_slope_curvature_at_vmatch); negative when steepening
+    :param slope_end:      asymptotic slope floor (default -4)
+    :returns:              extrapolated cross section in cm^2/g, shape (n,)
     """
     v_0 = v[0]
     log_x = np.log(v / v_0)
-
-    expon = slope_at_v0 + slope_of_slope * log_x
-    expon = np.maximum(expon, slope_end)
-
+    expon = np.maximum(slope_at_v0 + slope_of_slope * log_x, slope_end)
     log_sigma = np.zeros(len(v))
     log_sigma[1:] = cumulative_trapezoid(expon, log_x)
     return sigma_v0 * np.exp(log_sigma)
 
+def get_slope_curvature_at_vmatch(v, sigma_v):
+    """
+    Estimate the curvature of the logarithmic slope of the velocity dependent cross section
+     d^2(log sigma)/d(log v)^2 at the last tabulated velocity
+
+    :param v:       velocity array in km/s, shape (n_v,)
+    :param sigma_v: cross section strength shape (n_v,)
+    :returns:       scalar d^2(log sigma)/d(log v)^2 evaluated at v[-1]
+    """
+    logv = np.log(v)
+    slope = np.gradient(np.log(sigma_v), logv)
+    return np.gradient(slope, logv)[-1]
 
 def get_slope_at_vmatch(v, sigma_v):
     """
@@ -52,54 +51,22 @@ def get_slope_at_vmatch(v, sigma_v):
     dlogsigma_dlogv = np.gradient(np.log(sigma_v), np.log(v))
     return dlogsigma_dlogv[-1]
 
-_cache = {}
+
+_TABLES = {}
 def get_phases(log10_mass_ratio, log10_alpha, potential='REPULSIVE_YUKAWA'):
     """
-    Return the velocity grid and phase shifts for a given parameter combination.
-
-    The precomputed grids cover the following ranges:
-
-        REPULSIVE_YUKAWA:
-            log10_mass_ratio :  2.8 –  5.2, step 0.2  (13 values)
-            log10_alpha      : -2.0 – -4.4, step -0.3  (9 values)
-
-        ATTRACTIVE_YUKAWA:
-            log10_mass_ratio :  3.5 –  4.7, step 0.03  (41 values)
-            log10_alpha      : -2.6 – -4.6, step -0.05 (41 values)
-
-    Parameters
-    ----------
-    log10_mass_ratio : float
-        log10(m_chi / m_phi). Must match a value in the precomputed grid.
-    log10_alpha : float
-        log10(coupling), expected to be negative. Must match a value in
-        the precomputed grid.
-    potential : str, optional
-        Either 'ATTRACTIVE_YUKAWA' or 'REPULSIVE_YUKAWA'.
-        Default is 'REPULSIVE_YUKAWA'.
-
-    Returns
-    -------
-    v : ndarray, shape (N_v,)
-        Velocity grid. The velocity grid differs for each parameter combination.
-    phases : ndarray, shape (N_v, N_ell)
-        Phase shifts delta_ell(v), with ell running from 0 to N_ell - 1.
-        Computed to l_max = 350. Columns beyond the converged ell are zero.
-
-    Raises
-    ------
-    ValueError
-        If log10_mass_ratio or log10_alpha is not in the precomputed grid.
+    Return the velocity grid and phase shifts for a given parameter combination
+    (log10 v in km/s, and delta_ell(v) for ell = 0 .. N_ell-1). Each table is read
+    from disk once and cached.
     """
+    if potential not in _TABLES:
+        with np.load(files("pykawa.data").joinpath(f"{potential}_phases.npz")) as d:
+            _TABLES[potential] = {k: d[k] for k in d.files}
+    data = _TABLES[potential]
+
     scale = 10 if potential == 'REPULSIVE_YUKAWA' else 100
     mphi_key  = int(round(log10_mass_ratio * scale))
     alpha_key = int(round(-log10_alpha * scale))  # stored as positive integers
-
-    if potential not in _cache:
-        path = files("pykawa.data").joinpath(f"{potential}_phases.npz")
-        _cache[potential] = np.load(path)
-
-    data = _cache[potential]
     mphi_vals  = data["mphi"]
     alpha_vals = data["alpha"]
 
@@ -109,7 +76,6 @@ def get_phases(log10_mass_ratio, log10_alpha, potential='REPULSIVE_YUKAWA'):
             f"log10_mass_ratio={log10_mass_ratio} not in precomputed grid. "
             f"Available: {(mphi_vals / scale).tolist()}"
         )
-
     j = np.searchsorted(alpha_vals, alpha_key)
     if j >= len(alpha_vals) or alpha_vals[j] != alpha_key:
         raise ValueError(

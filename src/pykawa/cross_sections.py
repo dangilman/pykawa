@@ -1,8 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d, RegularGridInterpolator
-from joblib import Parallel, delayed
-from tqdm import tqdm
-from pykawa.utils import get_slope_at_vmatch, extrapolate_cross_section, get_phases
+from pykawa.utils import (get_slope_at_vmatch, get_slope_curvature_at_vmatch,
+                          extrapolate_cross_section, get_phases)
 from pykawa.partial_wave_sums import (partial_wave_sum_momentum,
                                       partial_wave_sum_viscosity,
                                       partial_wave_sum_total,
@@ -38,10 +37,12 @@ class CrossSection(object):
         v_extension_high = np.logspace(np.log10(vmax), 4.0, 32)
         sigma_v_extension_low = sigma_v[0] * np.ones_like(v_extension_low)
         slope_at_v0 = get_slope_at_vmatch(v, sigma_v)
+        curv_at_v0 = get_slope_curvature_at_vmatch(v, sigma_v)
+        curv_at_v0 = min(curv_at_v0, -0.05)
         sigma_v_extension_high = extrapolate_cross_section(v_extension_high,
                                              sigma_v[-1],
                                              slope_at_v0,
-                                             slope_at_v0,
+                                             curv_at_v0,
                                              -1 * v_power)
         velocity = np.append(np.append(v_extension_low, v[0:-1]), v_extension_high)
         sigma = np.append(sigma_v_extension_low, np.append(sigma_v[0:-1], sigma_v_extension_high))
@@ -148,7 +149,7 @@ class CrossSection(object):
             dsigma = partial_wave_sum_angular(self.v, theta_grid, self.phase_shifts)
 
             weights = dsigma * np.sin(theta_grid)[np.newaxis, :]  # (n_v, n_theta)
-            weights /= np.trapz(weights, theta_grid, axis=1)[:, np.newaxis]
+            weights /= np.trapezoid(weights, theta_grid, axis=1)[:, np.newaxis]
             cdfs = np.cumsum(weights, axis=1) * (theta_grid[1] - theta_grid[0])
             cdfs /= cdfs[:, -1:]
 
@@ -182,7 +183,7 @@ class CrossSection(object):
         u = np.random.uniform(0, 1, n_samples)
         return np.interp(u, cdf, self._scattering_angle_theta_grid)
 
-    def convert_to_SIDM_params(self, amp_at_vref, v_ref=35):
+    def convert_to_SIDM_params(self, amp_at_vref, v_ref=60):
         """
         Compute the m_chi, m_phi values corresponding to a set of alpha_chi, m_chi / m_phi, amp_at_vref values
         return: m_chi and m_phi in Gev
@@ -191,46 +192,40 @@ class CrossSection(object):
         m_phi = m_chi / 10 ** self.log10_mass_ratio
         return m_chi, m_phi
 
-    def compute_mchi(self, amp_at_vref, v_ref=35):
+    def compute_mchi(self, amp_at_vref, v_ref=60):
         """
         Compute the DM particle mass m_chi for a given alpha, m_chi / m_phi, and amp_at_vref combination
         return m_chi in GeV
         """
         xnorm = np.log(v_ref)
         amp_at_vref_1 = np.exp(self.interp(xnorm))
-        m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
+        m_chi = np.exp((self.interp(xnorm) - np.log(amp_at_vref)) / 3)
         return m_chi
 
-    def relic_density_log10_dsphr(self, v_ref=35):
+    def relic_density_log10_dsphr(self, v_ref=60, relic_coeff=0.1):
         """
         Compute the value of log10(sigma/m_chi) at v_ref [cm^2/g] that satisfies the
-        thermal relic density constraint alpha_chi ~ 0.1 * (m_chi / TeV), given
-        log10alpha and log10_mass_ratio.
+        thermal relic density constraint alpha_chi = relic_coeff * (m_chi / TeV).
 
-        :param v_ref:             reference velocity in km/s (default 35)
-        :returns:                 log10(amp_at_vref) satisfying the relic constraint,
-                                  same shape as log10alpha
+        :param v_ref:       reference velocity in km/s
+        :param relic_coeff: coefficient in alpha_chi = relic_coeff * (m_chi / TeV);
+                            0.1 is the order-of-magnitude estimate for s-wave
+                            annihilation into light mediators
+        :returns:           log10(amp_at_vref) satisfying the relic constraint
         """
-        log10alpha = np.atleast_1d(self.log10alpha)
-        log10_mass_ratio = np.atleast_1d(self.log10_mass_ratio)
+        # relic: alpha_chi = relic_coeff * (m_chi / TeV)  =>  m_chi [GeV] = 10^3 * alpha_chi / relic_coeff
+        log10_m_chi = self.log10alpha - np.log10(relic_coeff) + 3.0
+        # sigma/m ~ m_chi^{-3}, with the table normalized to m_chi = 1 GeV
+        log10_amp_1 = float(self.interp(np.log(v_ref))) / np.log(10.0)
+        return log10_amp_1 - 3.0 * log10_m_chi
 
-        log10_amp = np.empty(len(log10alpha))
-        for i, (la, lmr) in enumerate(zip(log10alpha, log10_mass_ratio)):
-            xnorm = (la, lmr, np.log(v_ref))
-            amp_at_vref_1 = np.exp(self.interp(xnorm))
-            # relic: alpha_chi = 0.1*(m_chi/TeV) => m_chi [GeV] = 10^(log10alpha + 4)
-            # sigma/m ~ m_chi^{-3} => amp_at_vref = amp_at_vref_1 * m_chi^{-3}
-            log10_amp[i] = np.log10(amp_at_vref_1) - 3 * (la + 4)
-
-        return float(log10_amp[0]) if log10_amp.size == 1 else log10_amp
-
-    def particle_physics_params(self, amp_at_vref, v_ref=35):
+    def particle_physics_params(self, amp_at_vref, v_ref=60):
         """
         Infer the particle physics parameters (m_χ, m_φ, α_χ) that produce a cross section
         of amp_at_vref cm²/g at velocity v_ref km/s.
 
         :param amp_at_vref: desired cross section amplitude in cm²/g at v_ref
-        :param v_ref:       reference velocity in km/s (default 35)
+        :param v_ref:       reference velocity in km/s (default 60)
         :returns:           dict with keys 'm_chi' (GeV), 'm_phi' (MeV), 'alpha_chi'
         """
         m_chi, m_phi = self.convert_to_SIDM_params(amp_at_vref, v_ref)
@@ -240,7 +235,7 @@ class CrossSection(object):
                   'alpha_chi': alpha_chi}
         return params
 
-    def thermal_average(self, v0, amp_at_vref, v_ref=35):
+    def thermal_average(self, v0, amp_at_vref, v_ref=60):
         """
         Compute the thermally averaged cross section ⟨σv⟩ for a Maxwell-Boltzmann
         distribution with velocity dispersion v0:
@@ -248,21 +243,21 @@ class CrossSection(object):
 
         :param v0:          velocity dispersion in km/s
         :param amp_at_vref: cross section amplitude in cm²/g at v_ref
-        :param v_ref:       reference velocity in km/s (default 35)
+        :param v_ref:       reference velocity in km/s (default 60)
         :returns:           thermally averaged cross section in cm²/g
         """
         _v = np.logspace(np.log10(self._velocity[0]), np.log10(self._velocity[-1]), 1000)
         _sigmav = self._evaluate_cross_section(_v, amp_at_vref, v_ref)
         kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
-        return np.trapz(kernel * _sigmav, _v) / np.trapz(kernel, _v)
+        return np.trapezoid(kernel * _sigmav, _v) / np.trapezoid(kernel, _v)
 
-    def thermal_average_integrand(self, v0, amp_at_vref, v_ref=35):
+    def thermal_average_integrand(self, v0, amp_at_vref, v_ref=60):
         """
         Return the integrand of the thermal average for diagnostic purposes.
 
         :param v0:          velocity dispersion in km/s
         :param amp_at_vref: cross section amplitude in cm²/g at v_ref
-        :param v_ref:       reference velocity in km/s (default 35)
+        :param v_ref:       reference velocity in km/s (default 60)
         :returns:           tuple (_v, integrand) where _v is the velocity array in km/s
                             and integrand = σ(v) * v^7 * exp(-v²/4v0²)
         """
@@ -271,7 +266,7 @@ class CrossSection(object):
         kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
         return _v, kernel * _sigmav
 
-    def _evaluate_cross_section(self, v, amp_at_vref, v_ref=35):
+    def _evaluate_cross_section(self, v, amp_at_vref, v_ref=60):
         """
         Evaluate the interpolated cross section at velocity v, normalized so that
         σ(v_ref) = amp_at_vref. Velocities outside the tabulated range are clamped
@@ -280,7 +275,7 @@ class CrossSection(object):
         :param v:           velocity in km/s, scalar or array
         :param amp_at_vref: desired cross section in cm²/g at v_ref; pass None to
                             return the unnormalized interpolated values
-        :param v_ref:       reference velocity in km/s (default 35)
+        :param v_ref:       reference velocity in km/s (default 60)
         :returns:           cross section in cm²/g, same shape as v
         """
         if isinstance(v, (list, np.ndarray)):
@@ -290,353 +285,20 @@ class CrossSection(object):
         else:
             v_eval = max(v, self._velocity[0])
             v_eval = min(v_eval, self._velocity[-1])
-        sigma = np.exp(self.interp(np.log(v_eval)))
-        if amp_at_vref is not None:
-            norm = np.exp(self.interp(np.log(v_ref)))
-            sigma *= amp_at_vref / norm
-        return sigma
+        if amp_at_vref is None:
+            return np.exp(self.interp(np.log(v_eval)))
+        return amp_at_vref * np.exp(self.interp(np.log(v_eval))
+                                    - self.interp(np.log(v_ref)))
 
-    def __call__(self, v, amp_at_vref, v_ref=35):
+    def __call__(self, v, amp_at_vref, v_ref=60):
         """
         Evaluate the cross section at velocity v. Convenience wrapper for
         _evaluate_cross_section.
 
         :param v:           velocity in km/s, scalar or array
         :param amp_at_vref: desired cross section in cm²/g at v_ref
-        :param v_ref:       reference velocity in km/s (default 35)
+        :param v_ref:       reference velocity in km/s (default 60)
         :returns:           cross section in cm²/g, same shape as v
         """
         return self._evaluate_cross_section(v, amp_at_vref, v_ref)
 
-
-class CrossSectionInterpolator(object):
-    """
-    Interpolates over a grid of CrossSection instances to give a continuous
-    representation of σ(v; log10α, log10(m_χ/m_φ)). Useful for parameter
-    inference where the cross section must be evaluated at many parameter combinations.
-    """
-
-    def __init__(self, v, log10alpha_values, log10_mass_ratio_values, cross_section_table,
-                 interp_method='linear', v_ref=35, thermal_average_interpolation_class=None):
-        """
-        :param v:                       velocities in km/s, shape (n_v,)
-        :param log10alpha_values:        grid of log10α values, shape (n_alpha,)
-        :param log10_mass_ratio_values:  grid of log10(m_χ/m_φ) values, shape (n_mr,)
-        :param cross_section_table:      cross section values, shape (n_alpha, n_mr, n_v)
-        :param interp_method:            interpolation method for RegularGridInterpolator
-        :param v_ref:                    reference velocity in km/s for normalization
-        :param thermal_average_interpolation_class: optional precomputed thermal average
-                                         interpolator; set via setup_thermal_average_interp()
-        """
-        self._vref = v_ref
-        self._v = v
-        self.log10alpha_values = log10alpha_values
-        self.log10_mass_ratio_values = log10_mass_ratio_values
-        points = (log10alpha_values, log10_mass_ratio_values, np.log(v))
-        self.interp = RegularGridInterpolator(points,
-                                              np.log(cross_section_table),
-                                              method=interp_method)
-        self._thermal_average_interpolation_class = thermal_average_interpolation_class
-
-    @property
-    def v_ref(self):
-        """
-        Reference velocity in km/s
-        """
-        return self._vref
-
-    @classmethod
-    def from_file(cls, base_path, v, log10alpha_values, log10_mass_ratio_values, v_power=4.0,
-                  filename_power=10):
-        """
-        Build a CrossSectionInterpolator by loading a grid of phase shift files and
-        evaluating each cross section on the velocity array v.
-
-        :param base_path:                path to directory containing phase shift files
-        :param v:                        velocities in km/s at which to evaluate σ, shape (n_v,)
-        :param log10alpha_values:        grid of log10α values, shape (n_alpha,)
-        :param log10_mass_ratio_values:  grid of log10(m_χ/m_φ) values, shape (n_mr,)
-        :param v_power:                  power law index for high-velocity extrapolation
-        :param filename_power:           multiplier used in filename encoding
-        :returns:                        CrossSectionInterpolator instance
-        """
-        cross_section_table = np.empty((len(log10alpha_values), len(log10_mass_ratio_values), len(v)))
-        for i, log10alpha in enumerate(log10alpha_values):
-            for j, log10_mass_ratio in enumerate(log10_mass_ratio_values):
-                cross = CrossSection.from_file(base_path, log10_mass_ratio, log10alpha, v_power,
-                                               filename_power=filename_power)
-                cross_section_table[i, j, :] = cross(v, None)
-        return CrossSectionInterpolator(v, log10alpha_values, log10_mass_ratio_values, cross_section_table)
-
-    def setup_thermal_average_interp(self, log10v0_grid, nsteps=20):
-        """
-        Precompute a 3D interpolation table for the thermal average ⟨σ⟩(v0; log10α, log10(m_χ/m_φ))
-        on a regular grid, using parallel evaluation. After calling this method,
-        thermal_average() will use the interpolator instead of direct integration.
-
-        :param log10v0_grid: 1D array of log10(v0) values defining the v0 grid
-        :param nsteps:       number of grid points along each of the log10α and
-                             log10(m_χ/m_φ) axes (default 20)
-        :returns:            tuple (points, log10_values, interpolator)
-        """
-        if self._thermal_average_interpolation_class is not None:
-            print('Overriding current thermal average interpolation class... ')
-
-        amp_at_vref_ref = 1.0
-        nsteps_v0 = len(log10v0_grid)
-        log10alpha_grid = np.linspace(self.log10alpha_values[0], self.log10alpha_values[-1], nsteps)
-        log10_mass_ratio_grid = np.linspace(self.log10_mass_ratio_values[0],
-                                            self.log10_mass_ratio_values[-1], nsteps)
-
-        indices = [
-            (i, j, k, lv0, lalpha, lmr)
-            for i, lv0 in enumerate(log10v0_grid)
-            for j, lalpha in enumerate(log10alpha_grid)
-            for k, lmr in enumerate(log10_mass_ratio_grid)
-        ]
-
-        def _eval(i, j, k, lv0, lalpha, lmr):
-            val = self.thermal_average(v0=10 ** lv0, amp_at_vref=amp_at_vref_ref,
-                                       log10alpha=lalpha, log10_mass_ratio=lmr,
-                                       use_interp=False)
-            return (i, j, k, val)
-
-        results = Parallel(n_jobs=-1, prefer="threads")(
-            delayed(_eval)(*args) for args in tqdm(
-                indices, total=nsteps_v0 * nsteps ** 2,
-                desc="Building interpolation grid", unit="eval"))
-
-        values = np.empty((nsteps_v0, nsteps, nsteps))
-        for i, j, k, val in results:
-            values[i, j, k] = val
-
-        log10_values = np.log10(values)
-        points = (log10v0_grid, log10alpha_grid, log10_mass_ratio_grid)
-        self._thermal_average_interpolation_class = RegularGridInterpolator(
-            points, log10_values, method='linear', bounds_error=False, fill_value=None)
-
-        return points, log10_values, self._thermal_average_interpolation_class
-
-    def _thermal_average_interpolation(self, v0, amp_at_vref, log10alpha, log10_mass_ratio):
-        """
-        Evaluate the precomputed thermal average interpolation table.
-        Raises an exception if setup_thermal_average_interp() has not been called.
-
-        :param v0:               velocity dispersion in km/s
-        :param amp_at_vref:      cross section amplitude in cm²/g at v_ref
-        :param log10alpha:       log10 of the coupling constant α
-        :param log10_mass_ratio: log10 of the mass ratio m_χ / m_φ
-        :returns:                thermally averaged cross section in cm²/g
-        """
-        if self._thermal_average_interpolation_class is None:
-            raise Exception('Thermal average interpolator not set up. '
-                            'Call setup_thermal_average_interp() first.')
-        v0 = np.atleast_1d(v0)
-        log10alpha = np.atleast_1d(log10alpha)
-        log10_mass_ratio = np.atleast_1d(log10_mass_ratio)
-        amp_at_vref = np.atleast_1d(amp_at_vref)
-        point = np.column_stack([np.log10(v0), log10alpha, log10_mass_ratio])
-        log10_result = self._thermal_average_interpolation_class(point)
-        result = 10 ** log10_result * amp_at_vref
-        return float(result) if result.size == 1 else result
-
-    def thermal_average(self, v0, amp_at_vref, log10alpha, log10_mass_ratio,
-                        use_interp=True, num_steps=200):
-        """
-        Compute the thermally averaged cross section ⟨σ⟩ for a Maxwell-Boltzmann
-        distribution with velocity dispersion v0. Can use either direct numerical
-        integration or the precomputed interpolation table.
-
-        :param v0:               velocity dispersion in km/s
-        :param amp_at_vref:      cross section amplitude in cm²/g at v_ref
-        :param log10alpha:       log10 of the coupling constant α
-        :param log10_mass_ratio: log10 of the mass ratio m_χ / m_φ
-        :param use_interp:       if True, use the precomputed interpolation table
-                                 (requires setup_thermal_average_interp() to have been called);
-                                 if False, perform direct numerical integration (slower)
-        :param num_steps:        number of velocity integration points when use_interp=False
-        :returns:                thermally averaged cross section in cm²/g
-        """
-        if use_interp:
-            return self._thermal_average_interpolation(v0, amp_at_vref, log10alpha, log10_mass_ratio)
-        else:
-            _v = np.logspace(np.log10(0.05 * v0), np.log10(150 * v0), num_steps)
-            _sigmav = self._evaluate_cross_section(_v, amp_at_vref, log10alpha, log10_mass_ratio)
-            kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
-            return np.trapz(kernel * _sigmav, _v) / np.trapz(kernel, _v)
-
-    def thermal_average_integrand(self, v0, amp_at_vref, log10alpha, log10_mass_ratio):
-        """
-        Return the integrand of the thermal average for diagnostic purposes.
-
-        :param v0:               velocity dispersion in km/s
-        :param amp_at_vref:      cross section amplitude in cm²/g at v_ref
-        :param log10alpha:       log10 of the coupling constant α
-        :param log10_mass_ratio: log10 of the mass ratio m_χ / m_φ
-        :returns:                tuple (_v, integrand) where _v is the velocity array in km/s
-                                 and integrand = σ(v) * v^7 * exp(-v²/4v0²)
-        """
-        _v = np.logspace(np.log10(0.01 * v0), np.log10(100 * v0), 2000)
-        _sigmav = self._evaluate_cross_section(_v, amp_at_vref, log10alpha, log10_mass_ratio)
-        kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
-        return _v, kernel * _sigmav
-
-    def relic_density_log10_dsphr(self, log10alpha, log10_mass_ratio, v_ref=35):
-        """
-        Compute the value of log10(sigma/m_chi) at v_ref [cm^2/g] that satisfies the
-        thermal relic density constraint alpha_chi ~ 0.1 * (m_chi / TeV), given
-        log10alpha and log10_mass_ratio.
-
-        The cross section scales as sigma/m ~ m_chi^-3 in pykawa's normalization, so
-        fixing (log10alpha, log10_mass_ratio) and requiring the relic condition uniquely
-        determines amp_at_vref.
-
-        :param log10alpha:        log10 of coupling constant alpha_chi, scalar or array
-        :param log10_mass_ratio:  log10 of m_chi / m_phi, scalar or array
-        :param v_ref:             reference velocity in km/s (default 35)
-        :returns:                 log10(amp_at_vref) satisfying the relic constraint,
-                                  same shape as log10alpha
-        """
-        log10alpha = np.atleast_1d(log10alpha)
-        log10_mass_ratio = np.atleast_1d(log10_mass_ratio)
-
-        log10_amp = np.empty(len(log10alpha))
-        for i, (la, lmr) in enumerate(zip(log10alpha, log10_mass_ratio)):
-            xnorm = (la, lmr, np.log(v_ref))
-            amp_at_vref_1 = np.exp(self.interp(xnorm))
-            # relic: alpha_chi = 0.1*(m_chi/TeV) => m_chi [GeV] = 10^(log10alpha + 4)
-            # sigma/m ~ m_chi^{-3} => amp_at_vref = amp_at_vref_1 * m_chi^{-3}
-            log10_amp[i] = np.log10(amp_at_vref_1) - 3 * (la + 4)
-
-        return float(log10_amp[0]) if log10_amp.size == 1 else log10_amp
-
-    def convert_to_SIDM_params(self, log10alpha, log10_mass_ratio, amp_at_vref, v_ref=35):
-        """
-        Compute the m_chi, m_phi values corresponding to a set of alpha_chi, m_chi / m_phi, amp_at_vref values
-        return: m_chi and m_phi in Gev
-        """
-        m_chi = self.compute_mchi(log10alpha, log10_mass_ratio, amp_at_vref, v_ref)
-        m_phi = m_chi / 10 ** log10_mass_ratio
-        return m_chi, m_phi
-
-    def compute_mchi(self, log10alpha, log10_mass_ratio, amp_at_vref, v_ref=35):
-        """
-        Compute the DM particle mass m_chi for a given alpha, m_chi / m_phi, and amp_at_vref combination
-        return m_chi in GeV
-        """
-        xnorm = (log10alpha, log10_mass_ratio, np.log(v_ref))
-        amp_at_vref_1 = np.exp(self.interp(xnorm))
-        m_chi = (amp_at_vref / amp_at_vref_1) ** (-1 / 3)
-        return m_chi
-
-    def particle_physics_params(self, log10alpha, log10_mass_ratio, amp_at_vref, v_ref=35):
-        """
-        Infer the particle physics parameters (m_χ, m_φ, α_χ) that produce a cross section
-        of amp_at_vref cm²/g at velocity v_ref km/s, for given log10α and log10(m_χ/m_φ).
-
-        :param log10alpha:       log10 of the coupling constant α
-        :param log10_mass_ratio: log10 of the mass ratio m_χ / m_φ
-        :param amp_at_vref:      desired cross section in cm²/g at v_ref
-        :param v_ref:            reference velocity in km/s (default 35)
-        :returns:                dict with keys 'm_chi' (GeV), 'm_phi' (GeV), 'alpha_chi'
-        """
-        m_chi, m_phi = self.convert_to_SIDM_params(log10alpha, log10_mass_ratio, amp_at_vref, v_ref)
-        alpha_chi = 10 ** log10alpha
-        params = {'m_chi': m_chi,
-                  'm_phi': m_phi,
-                  'alpha_chi': alpha_chi}
-        return params
-
-    def _evaluate_cross_section(self, v, amp_at_vref, log10alpha, log10_mass_ratio):
-        """
-        Evaluate the interpolated cross section at velocity v for given particle physics
-        parameters, normalized so that σ(v_ref) = amp_at_vref. Velocities outside the
-        tabulated range are clamped to the nearest boundary value.
-
-        :param v:                velocity in km/s, scalar or array
-        :param amp_at_vref:      desired cross section in cm²/g at v_ref; pass None to
-                                 return unnormalized values
-        :param log10alpha:       log10 of the coupling constant α
-        :param log10_mass_ratio: log10 of the mass ratio m_χ / m_φ
-        :returns:                cross section in cm²/g, same shape as v
-        """
-        if isinstance(v, (list, np.ndarray)):
-            v_eval = np.ones_like(v) * v
-            v_eval[np.where(v < self._v[0])[0]] = self._v[0]
-            v_eval[np.where(v > self._v[-1])[0]] = self._v[-1]
-        else:
-            v_eval = max(v, self._v[0])
-            v_eval = min(v_eval, self._v[-1])
-        x = (log10alpha, log10_mass_ratio, np.log(v_eval))
-        sigma = np.exp(self.interp(x))
-        if amp_at_vref is not None:
-            xnorm = (log10alpha, log10_mass_ratio, np.log(self._vref))
-            norm = np.exp(self.interp(xnorm))
-            sigma *= amp_at_vref / norm
-        return sigma
-
-    def __call__(self, v, amp_at_vref, log10alpha, log10_mass_ratio):
-        """
-        Evaluate the cross section at velocity v. Convenience wrapper for
-        _evaluate_cross_section.
-
-        :param v:                velocity in km/s, scalar or array
-        :param amp_at_vref:      desired cross section in cm²/g at v_ref
-        :param log10alpha:       log10 of the coupling constant α
-        :param log10_mass_ratio: log10 of the mass ratio m_χ / m_φ
-        :returns:                cross section in cm²/g, same shape as v
-        """
-        return self._evaluate_cross_section(v, amp_at_vref, log10alpha, log10_mass_ratio)
-
-def make_cross_section_interpolator(potential, cross_section_type='VISCOSITY',
-                                    v=None, v_power=4.0, v_ref=35):
-    """
-    Build a CrossSectionInterpolator from the precomputed phase shift data
-    for a given potential.
-
-    Parameters
-    ----------
-    potential : str
-        Either 'ATTRACTIVE_YUKAWA' or 'REPULSIVE_YUKAWA'.
-    cross_section_type : str, optional
-        One of 'VISCOSITY', 'MOMENTUM', or 'TOTAL'. Default is 'VISCOSITY'.
-    v : ndarray, optional
-        Velocity array in km/s at which to evaluate the cross section.
-        Defaults to np.logspace(-1, 4, 100).
-    v_power : float, optional
-        Power law index for high-velocity extrapolation. Default is 4.0.
-    v_ref: reference velocity at which to normalize cross section strengtht to "amp_at_vref"
-
-    Returns
-    -------
-    CrossSectionInterpolator
-    """
-    if v is None:
-        v = np.logspace(-1, 4, 100)
-
-    scale = 10 if potential == 'REPULSIVE_YUKAWA' else 100
-    data = np.load(files("pykawa.data").joinpath(f"{potential}_phases.npz"))
-    mphi_vals = data["mphi"]
-    alpha_vals = data["alpha"]
-    lconv_table = data["lconv"]
-    log10_mass_ratio_values = mphi_vals / scale
-    log10alpha_values = -alpha_vals / scale
-    n_alpha = len(log10alpha_values)
-    n_mr = len(log10_mass_ratio_values)
-    cross_section_table = np.empty((n_alpha, n_mr, len(v)))
-    v_grid_table = np.empty((n_alpha, n_mr, 25))
-
-    for i, log10alpha in enumerate(log10alpha_values):
-        for j, log10_mass_ratio in enumerate(log10_mass_ratio_values):
-            v_grid, phases = get_phases(log10_mass_ratio, log10alpha, potential)
-            cross = CrossSection.from_phase_shifts(
-                v_grid, phases,
-                cross_section_type, log10alpha, log10_mass_ratio,
-                v_power=v_power
-            )
-            cross_section_table[i, j, :] = cross(v, None)
-            v_grid_table[i, j, :] = v_grid
-    cross_section_interpolator = CrossSectionInterpolator(v, log10alpha_values, log10_mass_ratio_values,
-                                                          cross_section_table,
-                                                          v_ref=v_ref)
-    return cross_section_interpolator, cross_section_table, log10_mass_ratio_values, log10alpha_values, v_grid_table
