@@ -183,7 +183,7 @@ class CrossSection(object):
         u = np.random.uniform(0, 1, n_samples)
         return np.interp(u, cdf, self._scattering_angle_theta_grid)
 
-    def convert_to_SIDM_params(self, amp_at_vref, v_ref=60):
+    def convert_to_SIDM_params(self, amp_at_vref, v_ref=100):
         """
         Compute the m_chi, m_phi values corresponding to a set of alpha_chi, m_chi / m_phi, amp_at_vref values
         return: m_chi and m_phi in Gev
@@ -192,17 +192,16 @@ class CrossSection(object):
         m_phi = m_chi / 10 ** self.log10_mass_ratio
         return m_chi, m_phi
 
-    def compute_mchi(self, amp_at_vref, v_ref=60):
+    def compute_mchi(self, amp_at_vref, v_ref=100):
         """
         Compute the DM particle mass m_chi for a given alpha, m_chi / m_phi, and amp_at_vref combination
         return m_chi in GeV
         """
         xnorm = np.log(v_ref)
-        amp_at_vref_1 = np.exp(self.interp(xnorm))
         m_chi = np.exp((self.interp(xnorm) - np.log(amp_at_vref)) / 3)
         return m_chi
 
-    def relic_density_log10_dsphr(self, v_ref=60, relic_coeff=0.1):
+    def relic_density_log10_dsphr(self, v_ref=100, relic_coeff=0.035):
         """
         Compute the value of log10(sigma/m_chi) at v_ref [cm^2/g] that satisfies the
         thermal relic density constraint alpha_chi = relic_coeff * (m_chi / TeV).
@@ -219,7 +218,7 @@ class CrossSection(object):
         log10_amp_1 = float(self.interp(np.log(v_ref))) / np.log(10.0)
         return log10_amp_1 - 3.0 * log10_m_chi
 
-    def particle_physics_params(self, amp_at_vref, v_ref=60):
+    def particle_physics_params(self, amp_at_vref, v_ref=100):
         """
         Infer the particle physics parameters (m_χ, m_φ, α_χ) that produce a cross section
         of amp_at_vref cm²/g at velocity v_ref km/s.
@@ -235,38 +234,40 @@ class CrossSection(object):
                   'alpha_chi': alpha_chi}
         return params
 
-    def thermal_average(self, v0, amp_at_vref, v_ref=60):
+    def thermal_average(self, v0, amp_at_vref, v_ref=100, expon=7):
         """
         Compute the thermally averaged cross section ⟨σv⟩ for a Maxwell-Boltzmann
         distribution with velocity dispersion v0:
-            ⟨σ⟩ = ∫ σ(v) v^7 exp(-v²/4v0²) dv / ∫ v^7 exp(-v²/4v0²) dv
+            ⟨σ⟩ = ∫ σ(v) v^expon exp(-v²/4v0²) dv / ∫ v^7 exp(-v²/4v0²) dv
 
         :param v0:          velocity dispersion in km/s
         :param amp_at_vref: cross section amplitude in cm²/g at v_ref
         :param v_ref:       reference velocity in km/s (default 60)
+        :param expon:       the power of velocity in the integration kernel
         :returns:           thermally averaged cross section in cm²/g
         """
         _v = np.logspace(np.log10(self._velocity[0]), np.log10(self._velocity[-1]), 1000)
         _sigmav = self._evaluate_cross_section(_v, amp_at_vref, v_ref)
-        kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
+        kernel = _v ** expon * np.exp(-0.25 * _v ** 2 / v0 ** 2)
         return np.trapezoid(kernel * _sigmav, _v) / np.trapezoid(kernel, _v)
 
-    def thermal_average_integrand(self, v0, amp_at_vref, v_ref=60):
+    def thermal_average_integrand(self, v0, amp_at_vref, v_ref=100, expon=7):
         """
         Return the integrand of the thermal average for diagnostic purposes.
 
         :param v0:          velocity dispersion in km/s
         :param amp_at_vref: cross section amplitude in cm²/g at v_ref
         :param v_ref:       reference velocity in km/s (default 60)
+        :param expon:       the power of velocity in the integration kernel
         :returns:           tuple (_v, integrand) where _v is the velocity array in km/s
                             and integrand = σ(v) * v^7 * exp(-v²/4v0²)
         """
         _v = np.logspace(np.log10(self._velocity[0]), np.log10(self._velocity[-1]), 1000)
         _sigmav = self._evaluate_cross_section(_v, amp_at_vref, v_ref)
-        kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
+        kernel = _v ** expon * np.exp(-0.25 * _v ** 2 / v0 ** 2)
         return _v, kernel * _sigmav
 
-    def _evaluate_cross_section(self, v, amp_at_vref, v_ref=60):
+    def _evaluate_cross_section(self, v, amp_at_vref, v_ref=100):
         """
         Evaluate the interpolated cross section at velocity v, normalized so that
         σ(v_ref) = amp_at_vref. Velocities outside the tabulated range are clamped
@@ -290,7 +291,7 @@ class CrossSection(object):
         return amp_at_vref * np.exp(self.interp(np.log(v_eval))
                                     - self.interp(np.log(v_ref)))
 
-    def __call__(self, v, amp_at_vref, v_ref=60):
+    def __call__(self, v, amp_at_vref, v_ref=100):
         """
         Evaluate the cross section at velocity v. Convenience wrapper for
         _evaluate_cross_section.

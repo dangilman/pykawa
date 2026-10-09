@@ -72,7 +72,7 @@ class CrossSectionInterpolator(object):
         return cls(v, log10alpha_values, log10_mass_ratio_values, cross_section_table,
                    v_ref=v_ref)
 
-    def setup_thermal_average_interp(self, log10v0_grid, nsteps=61):
+    def setup_thermal_average_interp(self, log10v0_grid, expon=7, nsteps=101):
         """
         Precompute a 3D interpolation table for the thermal average ⟨σ⟩(v0; log10α, log10(m_χ/m_φ))
         on a regular grid, using parallel evaluation. After calling this method,
@@ -147,7 +147,7 @@ class CrossSectionInterpolator(object):
         result = 10 ** log10_result * amp_at_vref
         return float(result[0]) if result.size == 1 else result
 
-    def thermal_average(self, v0, amp_at_vref, log10alpha, log10_mass_ratio,
+    def thermal_average(self, v0, amp_at_vref, log10alpha, log10_mass_ratio, expon=7,
                         use_interp=True, num_steps=200):
         """
         Compute the thermally averaged cross section ⟨σ⟩ for a Maxwell-Boltzmann
@@ -169,7 +169,7 @@ class CrossSectionInterpolator(object):
         else:
             _v = np.logspace(np.log10(0.05 * v0), np.log10(150 * v0), num_steps)
             _sigmav = self._evaluate_cross_section(_v, amp_at_vref, log10alpha, log10_mass_ratio)
-            kernel = _v ** 7 * np.exp(-0.25 * _v ** 2 / v0 ** 2)
+            kernel = _v ** expon * np.exp(-0.25 * _v ** 2 / v0 ** 2)
             return np.trapezoid(kernel * _sigmav, _v) / np.trapezoid(kernel, _v)
 
     def thermal_average_integrand(self, v0, amp_at_vref, log10alpha, log10_mass_ratio):
@@ -311,7 +311,7 @@ class MixtureCrossSectionInterpolator(object):
         if not np.allclose(v_refs, v_refs[0]):
             raise Exception('components must share a reference velocity, got ' + str(v_refs))
         self._vref = v_refs[0]
-        
+
         # the mixture is only defined where every component is tabulated
         self.log10alpha_values = np.array(
             [max(min(c.log10alpha_values) for c in self.components),
@@ -372,7 +372,7 @@ class MixtureCrossSectionInterpolator(object):
             out = total * np.atleast_1d(amp_at_vref) / self._mixture_norm(log10alpha, log10_mass_ratio)
         return float(out[0]) if out.size == 1 else out
 
-    def thermal_average(self, v0, amp_at_vref, log10alpha, log10_mass_ratio,
+    def thermal_average(self, v0, amp_at_vref, log10alpha, log10_mass_ratio, expon=7,
                         use_interp=True, num_steps=200):
         """
         Thermally averaged mixture cross section. Thermal averaging is linear in sigma, so this is
@@ -382,6 +382,7 @@ class MixtureCrossSectionInterpolator(object):
         :param amp_at_vref: desired mixture cross section in cm^2/g at v_ref
         :param log10alpha: log10 of the coupling constant alpha
         :param log10_mass_ratio: log10 of the mass ratio m_chi / m_phi
+        :param expon:       the power of velocity in the integration kernel
         :param use_interp: use each component's precomputed thermal average table
         :param num_steps: velocity integration points when use_interp is False
         :return: thermally averaged cross section in cm^2/g
@@ -391,7 +392,7 @@ class MixtureCrossSectionInterpolator(object):
         for w, c, s_vref in zip(self.weights, self.components, at_vref):
             # calling with amp=1 returns <sigma>/sigma(v_ref), so multiply back to unnormalize
             shape = np.atleast_1d(c.thermal_average(v0, 1.0, log10alpha, log10_mass_ratio,
-                                                    use_interp=use_interp, num_steps=num_steps))
+                                                    expon=expon, use_interp=use_interp, num_steps=num_steps))
             total = total + w * shape * s_vref
         out = total * np.atleast_1d(amp_at_vref) / self._mixture_norm(log10alpha, log10_mass_ratio)
         return float(out[0]) if out.size == 1 else out
