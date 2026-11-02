@@ -25,7 +25,7 @@ Built with [Cookiecutter](https://github.com/cookiecutter/cookiecutter) and the 
 ## Attribution 
 When using cross sections loaded following the attractive/repulsive_yukawa_tabulated notebooks, link to this repository. 
 
-When using the SIDM cross section class referred to as FERMION_SCALAR_DILEPTON in the cross_section_interpolator module, please cite: 
+The SIDM model considered by Gilman et al. (2026) "Hints of self-interacting dark matter from strong gravitational lensing" is stored as the FERMION_CHARGED_SCALAR in the cross_section_interpolator module. When using this model, please cite: 
 M. M. Flores, K. Petraki, and T. Pignard, Variable-phase methods and data for long-range scattering, arXiv:2610.30261.
 
 and also cite the dataset:
