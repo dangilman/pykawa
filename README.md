@@ -5,7 +5,7 @@
   <img src="pykawa_logo.png" width="600"/>
 </p>
 
-Exact solutions for the phase shifts and scattering cross sections for Yukawa potentials. 
+The phase shifts and scattering cross sections for Yukawa potentials. 
 
 Solutions are obtained following the variable phase approach. The mathematica scripts used to compute the cross sections can be found in the "mathematica_scripts" directory. 
 
