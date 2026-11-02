@@ -21,3 +21,13 @@ See the notebooks for example usage.
 pykawa was created in 2026 by Daniel Gilman.
 
 Built with [Cookiecutter](https://github.com/cookiecutter/cookiecutter) and the [audreyfeldroy/cookiecutter-pypackage](https://github.com/audreyfeldroy/cookiecutter-pypackage) project template.
+
+## Attribution 
+When using cross sections loaded following the attractive/repulsive_yukawa_tabulated notebooks, link to this repository. 
+
+When using the SIDM cross section class referred to as FERMION_SCALAR_DILEPTON in the cross_section_interpolator module, please cite: 
+M. M. Flores, K. Petraki, and T. Pignard, Variable-phase methods and data for long-range scattering, arXiv:2610.30261.
+
+and also cite the dataset:
+
+M. M. Flores, K. Petraki, and T. Pignard, YukawaVPS data: phase shifts, Sommerfeld factors, and cross sections for Yukawa scattering, Zenodo (2026), doi:10.5281/zenodo.23475703.
