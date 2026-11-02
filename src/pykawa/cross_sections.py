@@ -234,7 +234,7 @@ class CrossSection(object):
                   'alpha_chi': alpha_chi}
         return params
 
-    def thermal_average(self, v0, amp_at_vref, v_ref=100, expon=7):
+    def thermal_average(self, v0, amp_at_vref, v_ref=100, expon=5):
         """
         Compute the thermally averaged cross section ⟨σv⟩ for a Maxwell-Boltzmann
         distribution with velocity dispersion v0:
@@ -248,10 +248,10 @@ class CrossSection(object):
         """
         _v = np.logspace(np.log10(self._velocity[0]), np.log10(self._velocity[-1]), 1000)
         _sigmav = self._evaluate_cross_section(_v, amp_at_vref, v_ref)
-        kernel = _v ** expon * np.exp(-0.25 * _v ** 2 / v0 ** 2)
+        kernel = _v ** (2+expon) * np.exp(-0.25 * _v ** 2 / v0 ** 2)
         return np.trapezoid(kernel * _sigmav, _v) / np.trapezoid(kernel, _v)
 
-    def thermal_average_integrand(self, v0, amp_at_vref, v_ref=100, expon=7):
+    def thermal_average_integrand(self, v0, amp_at_vref, v_ref=100, expon=5):
         """
         Return the integrand of the thermal average for diagnostic purposes.
 
@@ -264,7 +264,7 @@ class CrossSection(object):
         """
         _v = np.logspace(np.log10(self._velocity[0]), np.log10(self._velocity[-1]), 1000)
         _sigmav = self._evaluate_cross_section(_v, amp_at_vref, v_ref)
-        kernel = _v ** expon * np.exp(-0.25 * _v ** 2 / v0 ** 2)
+        kernel = _v ** (2+expon) * np.exp(-0.25 * _v ** 2 / v0 ** 2)
         return _v, kernel * _sigmav
 
     def _evaluate_cross_section(self, v, amp_at_vref, v_ref=100):
