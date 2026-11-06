@@ -25,7 +25,7 @@ Built with [Cookiecutter](https://github.com/cookiecutter/cookiecutter) and the 
 ## Attribution 
 When using methods in this package, please provide a link to this repo and cite Gilman et al. (2026), arXiv:2610.40766. 
 
-The SIDM model considered by Gilman et al. (2026) is stored as the FERMION_CHARGED_SCALAR in the cross_section_interpolator module, and was computed following methods presented by Flores, Petraki, Pignard (2026). When using this model, please cite: 
+The SIDM model considered by Gilman et al. (2026) is stored as the FERMION_CHARGED_SCALAR in the cross_section_interpolator module. The cross section was computed following methods presented by Flores, Petraki, Pignard (2026). When using this model, please cite: 
 M. M. Flores, K. Petraki, and T. Pignard, Variable-phase methods and data for long-range scattering, arXiv:2610.30261.
 
 and also cite the dataset:
