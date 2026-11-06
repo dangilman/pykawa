@@ -32,4 +32,4 @@ and also cite the dataset:
 
 M. M. Flores, K. Petraki, and T. Pignard, YukawaVPS data: phase shifts, Sommerfeld factors, and cross sections for Yukawa scattering, Zenodo (2026), doi:10.5281/zenodo.23475703.
 
-The variable phase method implemented for the other Yukawa potential models is computed using the formulation of [Chu et al. (2020)]([https://github.com](https://ui.adsabs.harvard.edu/abs/2020JCAP...06..043C/abstract)). 
+The variable phase method implemented for the other Yukawa potential models is computed using the formulation of Chu, Garcia-Cely, Murayama (2020). 
