@@ -5,7 +5,7 @@
   <img src="pykawa_logo.png" width="600"/>
 </p>
 
-The phase shifts and scattering cross sections for Yukawa potentials. 
+This package stores phase shifts and scattering cross sections for Yukawa potentials. 
 
 ## Features
 
