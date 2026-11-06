@@ -31,3 +31,5 @@ M. M. Flores, K. Petraki, and T. Pignard, Variable-phase methods and data for lo
 and also cite the dataset:
 
 M. M. Flores, K. Petraki, and T. Pignard, YukawaVPS data: phase shifts, Sommerfeld factors, and cross sections for Yukawa scattering, Zenodo (2026), doi:10.5281/zenodo.23475703.
+
+The variable phase method implemented for the other Yukawa potential models is computed using the formulation of \href{https://ui.adsabs.harvard.edu/abs/2020JCAP...06..043C/abstract}{Chu et al. (2020)}. 
