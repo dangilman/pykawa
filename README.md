@@ -28,7 +28,7 @@ If you use this package, please link to this repository and cite:
 
 - D. Gilman et al. (2026), arXiv:2610.40766
 
-### DM with a charged scalar mediator
+#### DM with a charged scalar mediator
 
 The SIDM model considered by Gilman et al. (2026) is available as
 `FERMION_CHARGED_SCALAR` in the `cross_section_interpolator` module. These
@@ -41,7 +41,7 @@ If you use this model, please also cite:
   Sommerfeld factors, and cross sections for Yukawa scattering*, Zenodo (2026),
   [doi:10.5281/zenodo.23475703](https://doi.org/10.5281/zenodo.23475703)
 
-### Other Yukawa potential models
+#### Other Yukawa potential models
 
 For the other Yukawa potential models, phase shifts are computed with the
 variable-phase method (F. Calogero, *Variable Phase Approach to Potential
