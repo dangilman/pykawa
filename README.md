@@ -14,8 +14,6 @@ See the notebooks for example usage.
 - Use interpolators to obtain solutions across a range of parameter space
 - Compute thermally averaged cross sections relevant for structure formation
 
-The mathematica scripts used to compute the cross sections can be found in the "mathematica_scripts" directory. 
-
 ## Author
 
 pykawa was created in 2026 by Daniel Gilman.
@@ -46,4 +44,4 @@ If you use this model, please also cite:
 For the other Yukawa potential models, phase shifts are computed with the
 variable-phase method (F. Calogero, *Variable Phase Approach to Potential
 Scattering*, Academic Press, 1967), using the formulation of Chu, Garcia-Cely &
-Murayama, JCAP 06 (2020) 043, arXiv:1908.06067.
+Murayama, JCAP 06 (2020) 043, arXiv:1908.06067. The mathematica scripts used to compute the cross sections can be found in the "mathematica_scripts" directory. 
